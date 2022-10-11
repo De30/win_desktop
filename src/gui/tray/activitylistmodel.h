@@ -80,6 +80,12 @@ public:
     };
     Q_ENUM(DataRole)
 
+    enum class ErrorType {
+        SyncError,
+        NetworkError,
+    };
+    Q_ENUM(ErrorType)
+
     explicit ActivityListModel(QObject *parent = nullptr);
 
     explicit ActivityListModel(AccountState *accountState,
@@ -114,7 +120,7 @@ public slots:
     void slotTriggerDismiss(const int activityIndex);
 
     void addNotificationToActivityList(const OCC::Activity &activity);
-    void addErrorToActivityList(const OCC::Activity &activity);
+    void addErrorToActivityList(const OCC::Activity &activity, OCC::ActivityListModel::ErrorType type);
     void addIgnoredFileToList(const OCC::Activity &newActivity);
     void addSyncFileItemToActivityList(const OCC::Activity &activity);
     void removeActivityFromActivityList(int row);

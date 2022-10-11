@@ -51,6 +51,8 @@ class Account;
 class SyncJournalDb;
 class ProcessDirectoryJob;
 
+enum class ErrorCategory;
+
 /**
  * Represent all the meta-data about a file in the server
  */
@@ -298,7 +300,7 @@ public:
     QStringList _listExclusiveFiles;
 
 signals:
-    void fatalError(const QString &errorString);
+    void fatalError(const QString &errorString, OCC::ErrorCategory errorCategory);
     void itemDiscovered(const OCC::SyncFileItemPtr &item);
     void finished();
 
@@ -311,7 +313,7 @@ signals:
       */
     void silentlyExcluded(const QString &folderPath);
 
-    void addErrorToGui(SyncFileItem::Status status, const QString &errorMessage, const QString &subject);
+    void addErrorToGui(SyncFileItem::Status status, const QString &errorMessage, const QString &subject, OCC::ErrorCategory category);
 };
 
 /// Implementation of DiscoveryPhase::adjustRenamedPath

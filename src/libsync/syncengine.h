@@ -161,16 +161,16 @@ signals:
     void aboutToPropagate(OCC::SyncFileItemVector &);
 
     // after each item completed by a job (successful or not)
-    void itemCompleted(const OCC::SyncFileItemPtr &);
+    void itemCompleted(const OCC::SyncFileItemPtr &item, OCC::ErrorCategory category);
 
     void transmissionProgress(const OCC::ProgressInfo &progress);
 
     void itemDiscovered(const SyncFileItemPtr &);
 
     /// We've produced a new sync error of a type.
-    void syncError(const QString &message, OCC::ErrorCategory category = OCC::ErrorCategory::Normal);
+    void syncError(const QString &message, OCC::ErrorCategory category);
 
-    void addErrorToGui(OCC::SyncFileItem::Status status, const QString &errorMessage, const QString &subject);
+    void addErrorToGui(OCC::SyncFileItem::Status status, const QString &errorMessage, const QString &subject, OCC::ErrorCategory category);
 
     void finished(bool success);
     void started();
@@ -206,11 +206,11 @@ private slots:
      */
     void slotNewItem(const OCC::SyncFileItemPtr &item);
 
-    void slotItemCompleted(const OCC::SyncFileItemPtr &item);
+    void slotItemCompleted(const OCC::SyncFileItemPtr &item, OCC::ErrorCategory category);
     void slotDiscoveryFinished();
     void slotPropagationFinished(bool success);
     void slotProgress(const OCC::SyncFileItem &item, qint64 curent);
-    void slotCleanPollsJobAborted(const QString &error);
+    void slotCleanPollsJobAborted(const QString &error, OCC::ErrorCategory category);
 
     /** Records that a file was touched by a job. */
     void slotAddTouchedFile(const QString &fn);

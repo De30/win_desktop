@@ -125,7 +125,7 @@ void PropagateRemoteMkdir::finalizeMkColJob(QNetworkReply::NetworkError err, con
     } else if (err != QNetworkReply::NoError) {
         SyncFileItem::Status status = classifyError(err, _item->_httpErrorCode,
             &propagator()->_anotherSyncNeeded);
-        done(status, _item->_errorString);
+        done(status, _item->_errorString, errorCategoryFromNetworkError(err));
         return;
     } else if (_item->_httpErrorCode != 201) {
         // Normally we expect "201 Created"
@@ -134,7 +134,7 @@ void PropagateRemoteMkdir::finalizeMkColJob(QNetworkReply::NetworkError err, con
         done(SyncFileItem::NormalError,
             tr("Wrong HTTP code returned by server. Expected 201, but received \"%1 %2\".")
                 .arg(_item->_httpErrorCode)
-                .arg(jobHttpReasonPhraseString));
+                .arg(jobHttpReasonPhraseString), ErrorCategory::GenericError);
         return;
     }
 
@@ -163,10 +163,10 @@ void PropagateRemoteMkdir::finalizeMkColJob(QNetworkReply::NetworkError err, con
             job->start();
         }
     });
-    connect(propfindJob, &PropfindJob::finishedWithError, this, [this]{
-        // ignore the PROPFIND error
+    connect(propfindJob, &PropfindJob::finishedWithError, this, [this] (QNetworkReply *reply) {
+        const auto err = reply ? reply->error() : QNetworkReply::NetworkError::UnknownNetworkError;
         propagator()->_activeJobList.removeOne(this);
-        done(SyncFileItem::NormalError);
+        done(SyncFileItem::NormalError, {}, errorCategoryFromNetworkError(err));
     });
     propfindJob->start();
 }
@@ -178,7 +178,7 @@ void PropagateRemoteMkdir::slotMkdir()
         const auto targetFile = propagator()->fullLocalPath(_item->_renameTarget);
         QString renameError;
         if (!FileSystem::rename(existingFile, targetFile, &renameError)) {
-            done(SyncFileItem::NormalError, renameError);
+            done(SyncFileItem::NormalError, renameError, ErrorCategory::GenericError);
             return;
         }
         emit propagator()->touchedFile(existingFile);
@@ -192,7 +192,7 @@ void PropagateRemoteMkdir::slotMkdir()
     SyncJournalFileRecord parentRec;
     bool ok = propagator()->_journal->getFileRecord(parentPath, &parentRec);
     if (!ok) {
-        done(SyncFileItem::NormalError);
+        done(SyncFileItem::NormalError, {}, ErrorCategory::GenericError);
         return;
     }
 
@@ -259,13 +259,13 @@ void PropagateRemoteMkdir::success()
     // save the file id already so we can detect rename or remove
     const auto result = propagator()->updateMetadata(itemCopy);
     if (!result) {
-        done(SyncFileItem::FatalError, tr("Error writing metadata to the database: %1").arg(result.error()));
+        done(SyncFileItem::FatalError, tr("Error writing metadata to the database: %1").arg(result.error()), ErrorCategory::GenericError);
         return;
     } else if (*result == Vfs::ConvertToPlaceholderResult::Locked) {
-        done(SyncFileItem::FatalError, tr("The file %1 is currently in use").arg(_item->_file));
+        done(SyncFileItem::FatalError, tr("The file %1 is currently in use").arg(_item->_file), ErrorCategory::GenericError);
         return;
     }
 
-    done(SyncFileItem::Success);
+    done(SyncFileItem::Success, {}, ErrorCategory::NoError);
 }
 }
