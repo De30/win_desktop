@@ -51,6 +51,8 @@
 
 #if defined(Q_OS_WIN)
 #include <windows.h>
+#elif defined(Q_OS_MACOS)
+#include "macOS/fileprovider.h"
 #endif
 
 #if defined(WITH_CRASHREPORTER)
@@ -331,8 +333,10 @@ Application::Application(int &argc, char **argv)
         qCInfo(lcApplication) << "VFS suffix plugin is available";
 
     _folderManager.reset(new FolderMan);
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN)
     _shellExtensionsServer.reset(new ShellExtensionsServer);
+#elif defined(Q_OS_MACOS)
+    _fileProvider.reset(Mac::FileProvider::instance());
 #endif
 
     connect(this, &SharedTools::QtSingleApplication::messageReceived, this, &Application::slotParseMessage);
