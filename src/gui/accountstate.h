@@ -83,7 +83,7 @@ public:
     using ConnectionStatus = ConnectionValidator::Status;
 
     /// Use the account as parent
-    explicit AccountState(AccountPtr account);
+    explicit AccountState(AccountPtr account, bool startCheckConnection = true);
     ~AccountState() override;
 
     /** Creates an account state from settings and an Account object.
@@ -183,6 +183,7 @@ public slots:
     /// Triggers a ping to the server to update state and
     /// connection status and errors.
     void checkConnectivity();
+    void startCheckConnectivity();
 
 private:
     void setState(State state);
