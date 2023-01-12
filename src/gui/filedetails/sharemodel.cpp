@@ -26,6 +26,7 @@ namespace {
 
 static const auto placeholderLinkShareId = QStringLiteral("__placeholderLinkShareId__");
 static const auto internalLinkShareId = QStringLiteral("__internalLinkShareId__");
+static const auto secureFileDropLinkShareId = QStringLiteral("__secureFileDropLinkShareId__");
 
 QString createRandomPassword()
 {
@@ -80,6 +81,7 @@ QHash<int, QByteArray> ShareModel::roleNames() const
     roles[PasswordRole] = "password";
     roles[PasswordEnforcedRole] = "passwordEnforced";
     roles[EditingAllowedRole] = "editingAllowed";
+    roles[IsSecureFileDropLinkRole] = "isSecureFileDropLink";
 
     return roles;
 }
@@ -151,6 +153,8 @@ QVariant ShareModel::data(const QModelIndex &index, const int role) const
         return expireDateEnforcedForShare(share);
     case EnforcedMaximumExpireDateRole:
         return enforcedMaxExpireDateForShare(share);
+    case IsSecureFileDropLinkRole:
+        return _isEncryptedRoootFolder && share->getPermissions().testFlag(OCC::SharePermission::SharePermissionCreate);
     case PasswordProtectEnabledRole:
         return share->isPasswordSet();
     case PasswordRole:
@@ -253,6 +257,9 @@ void ShareModel::updateData()
 
     _numericFileId = fileRecord.numericFileId();
 
+    _isEncryptedFile = fileRecord._isE2eEncrypted;
+    _isEncryptedRoootFolder = fileRecord._isE2eEncrypted && fileRecord.e2eMangledName().isEmpty();
+
     // Will get added when shares are fetched if no link shares are fetched
     _placeholderLinkShare.reset(new Share(_accountState->account(),
                                           placeholderLinkShareId,
@@ -267,6 +274,13 @@ void ShareModel::updateData()
                                        _accountState->account()->davDisplayName(),
                                        _sharePath,
                                        Share::TypeInternalLink));
+
+    _secureFileDropLinkShare.reset(new Share(_accountState->account(),
+                                             secureFileDropLinkShareId,
+                                             _accountState->account()->id(),
+                                             _accountState->account()->davDisplayName(),
+                                             _sharePath,
+                                             Share::TypeSecureFileDropPlaceholderLink));
 
     auto job = new PropfindJob(_accountState->account(), _sharePath);
     job->setProperties(
@@ -323,6 +337,9 @@ void ShareModel::initShareManager()
 
 void ShareModel::handlePlaceholderLinkShare()
 {
+    if (_isEncryptedFile) {
+        return;
+    }
     // We want to add the placeholder if there are no link shares and
     // if we are not already showing the placeholder link share
     auto linkSharePresent = false;
@@ -346,6 +363,37 @@ void ShareModel::handlePlaceholderLinkShare()
         slotRemoveShareWithId(placeholderLinkShareId);
     } else if (!linkSharePresent && !placeholderLinkSharePresent) {
         slotAddShare(_placeholderLinkShare);
+    }
+}
+
+void ShareModel::handleSecureFileDropLinkShare()
+{
+    if (!_isEncryptedRoootFolder) {
+        return;
+    }
+    // We want to add the placeholder if there are no link shares and
+    // if we are not already showing the placeholder link share
+    auto linkSharePresent = false;
+    auto secureFileDropLinkSharePresent = false;
+
+    for (const auto &share : qAsConst(_shares)) {
+        const auto shareType = share->getShareType();
+
+        if (!linkSharePresent && shareType == Share::TypeLink) {
+            linkSharePresent = true;
+        } else if (!secureFileDropLinkSharePresent && shareType == Share::TypeSecureFileDropPlaceholderLink) {
+            secureFileDropLinkSharePresent = true;
+        }
+
+        if (linkSharePresent && secureFileDropLinkSharePresent) {
+            break;
+        }
+    }
+
+    if (linkSharePresent && secureFileDropLinkSharePresent) {
+        slotRemoveShareWithId(secureFileDropLinkShareId);
+    } else if (!linkSharePresent && !secureFileDropLinkSharePresent) {
+        slotAddShare(_secureFileDropLinkShare);
     }
 }
 
@@ -396,6 +444,7 @@ void ShareModel::slotSharesFetched(const QList<SharePtr> &shares)
     }
 
     handlePlaceholderLinkShare();
+    handleSecureFileDropLinkShare();
 }
 
 void ShareModel::setupInternalLinkShare()
@@ -403,7 +452,8 @@ void ShareModel::setupInternalLinkShare()
     if (!_accountState ||
         _accountState->account().isNull() ||
         _localPath.isEmpty() ||
-        _privateLinkUrl.isEmpty()) {
+        _privateLinkUrl.isEmpty() ||
+        _isEncryptedFile) {
         return;
     }
 
@@ -472,6 +522,7 @@ void ShareModel::slotAddShare(const SharePtr &share)
     }
 
     handlePlaceholderLinkShare();
+    handleSecureFileDropLinkShare();
     Q_EMIT sharesChanged();
 }
 
@@ -499,6 +550,7 @@ void ShareModel::slotRemoveShareWithId(const QString &shareId)
     endRemoveRows();
 
     handlePlaceholderLinkShare();
+    handleSecureFileDropLinkShare();
 
     Q_EMIT sharesChanged();
 }
@@ -528,7 +580,15 @@ void ShareModel::slotRemoveSharee(const ShareePtr &sharee)
 QString ShareModel::displayStringForShare(const SharePtr &share) const
 {
     if (const auto linkShare = share.objectCast<LinkShare>()) {
-        const auto displayString = tr("Share link");
+
+        const auto isSecureFileDropShare = [this, linkShare]() {
+            if (_isEncryptedRoootFolder) {
+                return linkShare->getPermissions().testFlag(OCC::SharePermission::SharePermissionCreate);
+            }
+            return false;
+        }();
+
+        const auto displayString = isSecureFileDropShare ? tr("Secure filedrop link") : tr("Share link");
 
         if (!linkShare->getLabel().isEmpty()) {
             return QStringLiteral("%1 (%2)").arg(displayString, linkShare->getLabel());
@@ -539,6 +599,8 @@ QString ShareModel::displayStringForShare(const SharePtr &share) const
         return tr("Link share");
     } else if (share->getShareType() == Share::TypeInternalLink) {
         return tr("Internal link");
+    } else if (share->getShareType() == Share::TypeSecureFileDropPlaceholderLink) {
+        return tr("Secure file drop");
     } else if (share->getShareWith()) {
         return share->getShareWith()->format();
     }
@@ -555,6 +617,7 @@ QString ShareModel::iconUrlForShare(const SharePtr &share) const
     case Share::TypeInternalLink:
         return QString(iconsPath + QStringLiteral("external.svg"));
     case Share::TypePlaceholderLink:
+    case Share::TypeSecureFileDropPlaceholderLink:
     case Share::TypeLink:
         return QString(iconsPath + QStringLiteral("public.svg"));
     case Share::TypeEmail:
@@ -885,9 +948,18 @@ void ShareModel::setShareNoteFromQml(const QVariant &share, const QString &note)
 
 void ShareModel::createNewLinkShare() const
 {
+    if (_isEncryptedFile && !_isEncryptedFile) {
+        qCWarning(lcShareModel) << "Attempt to create a link share for non-root encrypted folder or a file.";
+        return;
+    }
+
     if (_manager) {
         const auto askOptionalPassword = _accountState->account()->capabilities().sharePublicLinkAskOptionalPassword();
         const auto password = askOptionalPassword ? createRandomPassword() : QString();
+        if (_isEncryptedRoootFolder) {
+            _manager->createSecureFileDropShare(_sharePath, QString(), password);
+            return;
+        }
         _manager->createLinkShare(_sharePath, QString(), password);
     }
 }

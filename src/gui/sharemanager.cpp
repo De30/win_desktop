@@ -396,6 +396,14 @@ void ShareManager::createLinkShare(const QString &path,
     job->createLinkShare(path, name, password);
 }
 
+void ShareManager::createSecureFileDropShare(const QString &path, const QString &name, const QString &password)
+{
+    auto *job = new OcsShareJob(_account);
+    connect(job, &OcsShareJob::shareJobFinished, this, &ShareManager::slotLinkShareCreated);
+    connect(job, &OcsJob::ocsError, this, &ShareManager::slotOcsError);
+    job->createSecureFileDropLinkShare(path, name, password);
+}
+
 void ShareManager::slotLinkShareCreated(const QJsonDocument &reply)
 {
     QString message;

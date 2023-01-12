@@ -587,6 +587,13 @@ void SocketApi::processShareRequest(const QString &localFile, SocketListener *li
             return;
         }
 
+        if (!fileData.journalRecord().e2eMangledName().isEmpty()) {
+            // we can not share an encrypted file or a subfolder under encrypted root foolder
+            const QString message = QLatin1String("SHARE:NOP:") + QDir::toNativeSeparators(localFile);
+            listener->sendMessage(message);
+            return;
+        }
+
         auto &remotePath = fileData.serverRelativePath;
 
         // Can't share root folder
@@ -752,6 +759,11 @@ public:
         _shareManager.fetchShares(_localFile);
     }
 
+    void setIsE2eEncryptedFolder(bool isE2eEncryptedFolder)
+    {
+        _isE2eEncryptedFolder = isE2eEncryptedFolder;
+    }
+
 private slots:
     void sharesFetched(const QList<OCC::SharePtr> &shares)
     {
@@ -771,7 +783,11 @@ private slots:
 
         // otherwise create a new one
         qCDebug(lcPublicLink) << "Creating new share";
-        _shareManager.createLinkShare(_localFile, shareName, QString());
+        if (_isE2eEncryptedFolder) {
+            _shareManager.createSecureFileDropShare(_localFile, shareName, QString());
+        } else {
+            _shareManager.createLinkShare(_localFile, shareName, QString());
+        }
     }
 
     void linkShareCreated(const QSharedPointer<OCC::LinkShare> &share)
@@ -832,6 +848,7 @@ private:
     AccountPtr _account;
     ShareManager _shareManager;
     QString _localFile;
+    bool _isE2eEncryptedFolder = false;
 };
 
 #else
@@ -852,7 +869,7 @@ public:
 
 #endif
 
-void SocketApi::command_COPY_PUBLIC_LINK(const QString &localFile, SocketListener *)
+void SocketApi::command_COPY_SECUREFILEDROP_LINK(const QString &localFile, SocketListener *)
 {
     auto fileData = FileData::get(localFile);
     if (!fileData.folder)
@@ -864,6 +881,24 @@ void SocketApi::command_COPY_PUBLIC_LINK(const QString &localFile, SocketListene
         [](const QString &url) { copyUrlToClipboard(url); });
     connect(job, &GetOrCreatePublicLinkShare::error, this,
         [=]() { emit shareCommandReceived(fileData.localPath); });
+    job->setIsE2eEncryptedFolder(true);
+    job->run();
+}
+
+void SocketApi::command_COPY_PUBLIC_LINK(const QString &localFile, SocketListener *)
+{
+    auto fileData = FileData::get(localFile);
+    if (!fileData.folder)
+        return;
+
+    AccountPtr account = fileData.folder->accountState()->account();
+    auto job = new GetOrCreatePublicLinkShare(account, fileData.serverRelativePath, this);
+    connect(job, &GetOrCreatePublicLinkShare::done, this, [](const QString &url) {
+        copyUrlToClipboard(url);
+    });
+    connect(job, &GetOrCreatePublicLinkShare::error, this, [=]() {
+        emit shareCommandReceived(fileData.localPath);
+    });
     job->run();
 }
 
@@ -1116,11 +1151,11 @@ void SocketApi::command_GET_STRINGS(const QString &argument, SocketListener *lis
     listener->sendMessage(QString("GET_STRINGS:END"));
 }
 
-void SocketApi::sendSharingContextMenuOptions(const FileData &fileData, SocketListener *listener, bool enabled)
+void SocketApi::sendSharingContextMenuOptions(const FileData &fileData, SocketListener *listener, bool isE2eeItem, bool isForRootE2eFolder)
 {
     auto record = fileData.journalRecord();
     bool isOnTheServer = record.isValid();
-    auto flagString = isOnTheServer && enabled ? QLatin1String("::") : QLatin1String(":d:");
+    auto flagString = isOnTheServer && (!isE2eeItem || isForRootE2eFolder) ? QLatin1String("::") : QLatin1String(":d:");
 
     auto capabilities = fileData.folder->accountState()->account()->capabilities();
     auto theme = Theme::instance();
@@ -1148,13 +1183,23 @@ void SocketApi::sendSharingContextMenuOptions(const FileData &fileData, SocketLi
             && !capabilities.sharePublicLinkEnforcePassword();
 
         if (canCreateDefaultPublicLink) {
-            listener->sendMessage(QLatin1String("MENU_ITEM:COPY_PUBLIC_LINK") + flagString + tr("Copy public link"));
+            if (isForRootE2eFolder) {
+                listener->sendMessage(QLatin1String("MENU_ITEM:COPY_SECUREFILEDROP_LINK") + QLatin1String("::") + tr("Copy secure filedrop link"));
+            } else {
+                listener->sendMessage(QLatin1String("MENU_ITEM:COPY_PUBLIC_LINK") + flagString + tr("Copy public link"));
+            }
         } else if (publicLinksEnabled) {
-            listener->sendMessage(QLatin1String("MENU_ITEM:MANAGE_PUBLIC_LINKS") + flagString + tr("Copy public link"));
+            if (isForRootE2eFolder) {
+                listener->sendMessage(QLatin1String("MENU_ITEM:MANAGE_PUBLIC_LINKS") + QLatin1String("::") + tr("Copy secure filedrop link"));
+            } else {
+                listener->sendMessage(QLatin1String("MENU_ITEM:MANAGE_PUBLIC_LINKS") + flagString + tr("Copy public link"));
+            }
         }
     }
 
-    listener->sendMessage(QLatin1String("MENU_ITEM:COPY_PRIVATE_LINK") + flagString + tr("Copy internal link"));
+    if (!isE2eeItem) {
+        listener->sendMessage(QLatin1String("MENU_ITEM:COPY_PRIVATE_LINK") + flagString + tr("Copy internal link"));
+    }
 
     // Disabled: only providing email option for private links would look odd,
     // and the copy option is more general.
@@ -1312,6 +1357,7 @@ void SocketApi::command_GET_MENU_ITEMS(const QString &argument, OCC::SocketListe
         const auto record = fileData.journalRecord();
         const bool isOnTheServer = record.isValid();
         const auto isE2eEncryptedPath = fileData.journalRecord()._isE2eEncrypted || !fileData.journalRecord()._e2eMangledName.isEmpty();
+        const auto isE2eEncryptedRootFolder = fileData.journalRecord()._isE2eEncrypted && fileData.journalRecord()._e2eMangledName.isEmpty();
         auto flagString = isOnTheServer && !isE2eEncryptedPath ? QLatin1String("::") : QLatin1String(":d:");
 
         const QFileInfo fileInfo(fileData.localPath);
@@ -1331,7 +1377,7 @@ void SocketApi::command_GET_MENU_ITEMS(const QString &argument, OCC::SocketListe
 
         sendEncryptFolderCommandMenuEntries(fileInfo, fileData, isE2eEncryptedPath, listener);
         sendLockFileCommandMenuEntries(fileInfo, syncFolder, fileData, listener);
-        sendSharingContextMenuOptions(fileData, listener, !isE2eEncryptedPath);
+        sendSharingContextMenuOptions(fileData, listener, isE2eEncryptedPath, isE2eEncryptedRootFolder);
 
         // Conflict files get conflict resolution actions
         bool isConflict = Utility::isConflictFile(fileData.folderRelativePath);

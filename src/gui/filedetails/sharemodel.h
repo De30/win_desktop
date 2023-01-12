@@ -57,6 +57,7 @@ public:
         PasswordRole,
         PasswordEnforcedRole,
         EditingAllowedRole,
+        IsSecureFileDropLinkRole,
     };
     Q_ENUM(Roles)
 
@@ -75,6 +76,7 @@ public:
         ShareTypeRoom = Share::TypeRoom,
         ShareTypePlaceholderLink = Share::TypePlaceholderLink,
         ShareTypeInternalLink = Share::TypeInternalLink,
+        ShareTypeSecureFileDropPlaceholderLink = Share::TypeSecureFileDropPlaceholderLink,
     };
     Q_ENUM(ShareType);
 
@@ -159,6 +161,7 @@ private slots:
     void updateData();
     void initShareManager();
     void handlePlaceholderLinkShare();
+    void handleSecureFileDropLinkShare();
     void setupInternalLinkShare();
 
     void slotPropfindReceived(const QVariantMap &result);
@@ -187,6 +190,7 @@ private:
     bool _hasInitialShareFetchCompleted = false;
     SharePtr _placeholderLinkShare;
     SharePtr _internalLinkShare;
+    SharePtr _secureFileDropLinkShare;
 
     // DO NOT USE QSHAREDPOINTERS HERE.
     // QSharedPointers MUST NOT be used with pointers already assigned to other shared pointers.
@@ -203,6 +207,8 @@ private:
     QString _sharePath;
     SharePermissions _maxSharingPermissions;
     QByteArray _numericFileId;
+    bool _isEncryptedFile = false;
+    bool _isEncryptedRoootFolder = false;
     SyncJournalFileLockInfo _filelockState;
     QString _privateLinkUrl;
 

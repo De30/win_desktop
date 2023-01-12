@@ -70,6 +70,7 @@ Page {
     readonly property bool expireDateEnforced: shareModelData.expireDateEnforced
     readonly property bool passwordProtectEnabled: shareModelData.passwordProtectEnabled
     readonly property bool passwordEnforced: shareModelData.passwordEnforced
+    readonly property bool isSecureFileDropLink: shareModelData.isSecureFileDropLink
 
     readonly property bool isLinkShare: shareModelData.shareType === ShareModel.ShareTypeLink
 
@@ -324,10 +325,11 @@ Page {
                 indicator.width: moreMenu.indicatorItemWidth
                 indicator.height: moreMenu.indicatorItemWidth
 
-                checkable: true
+                checkable: !root.isSecureFileDropLink
                 checked: root.editingAllowed
                 text: qsTr("Allow editing")
                 enabled: !root.waitingForEditingAllowedChange
+                visible: !root.isSecureFileDropLink
 
                 onClicked: {
                     root.toggleAllowEditing(checked);
