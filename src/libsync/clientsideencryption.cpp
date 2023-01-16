@@ -24,7 +24,6 @@
 #include <QLoggingCategory>
 #include <QFileInfo>
 #include <QDir>
-#include <QJsonObject>
 #include <QXmlStreamReader>
 #include <QXmlStreamNamespaceDeclaration>
 #include <QStack>
@@ -1484,6 +1483,9 @@ void FolderMetadata::setupExistingMetadata(const QByteArray& metadata)
   QByteArray sharing = metadataObj["sharing"].toString().toLocal8Bit();
   QJsonObject files = metaDataDoc.object()["files"].toObject();
 
+  _fileDrop = metaDataDoc.object()["filedrop"].toObject();
+  _isFileDropDetected = _fileDrop.size() > 0;
+
   QJsonDocument debugHelper;
   debugHelper.setObject(metadataKeys);
   qCDebug(lcCse) << "Keys: " << debugHelper.toJson(QJsonDocument::Compact);
@@ -1702,6 +1704,49 @@ void FolderMetadata::removeAllEncryptedFiles()
 
 QVector<EncryptedFile> FolderMetadata::files() const {
     return _files;
+}
+
+bool FolderMetadata::isFileDropDetected() const
+{
+    return _isFileDropDetected;
+}
+
+bool FolderMetadata::moveFileDropToFiles()
+{
+    if (_fileDrop.isEmpty()) {
+        return false;
+    }
+
+    for (auto it = _fileDrop.constBegin(), end = _fileDrop.constEnd(); it != end; it++) {
+        EncryptedFile file;
+        file.encryptedFilename = it.key();
+
+        auto fileObj = it.value().toObject();
+        file.metadataKey = fileObj["metadataKey"].toInt();
+        file.authenticationTag = QByteArray::fromBase64(fileObj["authenticationTag"].toString().toLocal8Bit());
+        file.initializationVector = QByteArray::fromBase64(fileObj["initializationVector"].toString().toLocal8Bit());
+
+        // Decrypt encrypted part
+        QByteArray key = _metadataKeys[file.metadataKey];
+        auto encryptedFile = fileObj["encrypted"].toString().toLocal8Bit();
+        auto decryptedFile = decryptJsonObject(encryptedFile, key);
+        auto decryptedFileDoc = QJsonDocument::fromJson(decryptedFile);
+        auto decryptedFileObj = decryptedFileDoc.object();
+
+        file.originalFilename = decryptedFileObj["filename"].toString();
+        file.encryptionKey = QByteArray::fromBase64(decryptedFileObj["key"].toString().toLocal8Bit());
+        file.mimetype = decryptedFileObj["mimetype"].toString().toLocal8Bit();
+        file.fileVersion = decryptedFileObj["version"].toInt();
+
+        // In case we wrongly stored "inode/directory" we try to recover from it
+        if (file.mimetype == QByteArrayLiteral("inode/directory")) {
+            file.mimetype = QByteArrayLiteral("httpd/unix-directory");
+        }
+
+        _files.push_back(file);
+    }
+
+    return true;
 }
 
 bool EncryptionHelper::fileEncryption(const QByteArray &key, const QByteArray &iv, QFile *input, QFile *output, QByteArray& returnTag)

@@ -4,6 +4,7 @@
 #include <QString>
 #include <QObject>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QSslCertificate>
 #include <QSslKey>
 #include <QFile>
@@ -192,6 +193,9 @@ public:
     [[nodiscard]] QVector<EncryptedFile> files() const;
     [[nodiscard]] bool isMetadataSetup() const;
 
+    [[nodiscard]] bool isFileDropDetected() const;
+
+    [[nodiscard]] bool moveFileDropToFiles();
 
 private:
     /* Use std::string and std::vector internally on this class
@@ -210,6 +214,8 @@ private:
     QMap<int, QByteArray> _metadataKeys;
     AccountPtr _account;
     QVector<QPair<QString, QString>> _sharing;
+    bool _isFileDropDetected = false;
+    QJsonObject _fileDrop;
 };
 
 } // namespace OCC

@@ -22,6 +22,7 @@
 #include "propagateremotemove.h"
 #include "propagateremotemkdir.h"
 #include "bulkpropagatorjob.h"
+#include "updatefiledropmetadata.h"
 #include "propagatorjobs.h"
 #include "filesystem.h"
 #include "common/utility.h"
@@ -584,7 +585,7 @@ void OwncloudPropagator::start(SyncFileItemVector &&items)
                                       directoriesToRemove,
                                       removedDirectory,
                                       items);
-        } else {
+        } else if (!directories.top().second->_item->_isFileDropDetected) {
             startFilePropagation(item,
                                  directories,
                                  directoriesToRemove,
@@ -644,6 +645,9 @@ void OwncloudPropagator::startDirectoryPropagation(const SyncFileItemPtr &item,
     } else {
         const auto currentDirJob = directories.top().second;
         currentDirJob->appendJob(directoryPropagationJob.get());
+    }
+    if (item->_isFileDropDetected) {
+        directoryPropagationJob->appendJob(new UpdateFileDropMetadataJob(this, item->_file));
     }
     directories.push(qMakePair(item->destination() + "/", directoryPropagationJob.release()));
 }
