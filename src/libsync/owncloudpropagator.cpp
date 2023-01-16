@@ -648,6 +648,8 @@ void OwncloudPropagator::startDirectoryPropagation(const SyncFileItemPtr &item,
     }
     if (item->_isFileDropDetected) {
         directoryPropagationJob->appendJob(new UpdateFileDropMetadataJob(this, item->_file));
+        item->_instruction = CSYNC_INSTRUCTION_NONE;
+        _anotherSyncNeeded = true;
     }
     directories.push(qMakePair(item->destination() + "/", directoryPropagationJob.release()));
 }

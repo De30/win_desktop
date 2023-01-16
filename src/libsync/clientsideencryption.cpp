@@ -1729,7 +1729,7 @@ bool FolderMetadata::moveFileDropToFiles()
         // Decrypt encrypted part
         QByteArray key = _metadataKeys[file.metadataKey];
         auto encryptedFile = fileObj["encrypted"].toString().toLocal8Bit();
-        auto decryptedFile = decryptJsonObject(encryptedFile, key);
+        auto decryptedFile = decryptMetadataKey(encryptedFile);
         auto decryptedFileDoc = QJsonDocument::fromJson(decryptedFile);
         auto decryptedFileObj = decryptedFileDoc.object();
 
