@@ -15,14 +15,10 @@
 #pragma once
 
 #include "owncloudpropagator.h"
-#include "abstractnetworkjob.h"
 
-#include <QElapsedTimer>
-#include <QLoggingCategory>
+class QNetworkReply;
 
 namespace OCC {
-
-Q_DECLARE_LOGGING_CATEGORY(lcUpdateFileDropMetadataJob)
 
 class FolderMetadata;
 
@@ -56,7 +52,6 @@ signals:
 
 private:
     QString _path;
-    QElapsedTimer _folderLockFirstTry;
     bool _currentLockingInProgress = false;
 
     bool _isUnlockRunning = false;
@@ -65,7 +60,7 @@ private:
     QByteArray _folderToken;
     QByteArray _folderId;
 
-    FolderMetadata *_metadata;
+    FolderMetadata *_metadata = nullptr;
 };
 
 }

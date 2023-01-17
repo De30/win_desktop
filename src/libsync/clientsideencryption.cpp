@@ -1483,8 +1483,7 @@ void FolderMetadata::setupExistingMetadata(const QByteArray& metadata)
   QByteArray sharing = metadataObj["sharing"].toString().toLocal8Bit();
   QJsonObject files = metaDataDoc.object()["files"].toObject();
 
-  _fileDrop = metaDataDoc.object()["filedrop"].toObject();
-  _isFileDropDetected = _fileDrop.size() > 0;
+  _fileDrop = metaDataDoc.object().value("filedrop").toObject();
 
   QJsonDocument debugHelper;
   debugHelper.setObject(metadataKeys);
@@ -1498,7 +1497,7 @@ void FolderMetadata::setupExistingMetadata(const QByteArray& metadata)
      * We have to base64 decode the metadatakey here. This was a misunderstanding in the RFC
      * Now we should be compatible with Android and IOS. Maybe we can fix it later.
      */
-    QByteArray b64DecryptedKey = decryptMetadataKey(currB64Pass);
+    QByteArray b64DecryptedKey = decryptData(currB64Pass);
     if (b64DecryptedKey.isEmpty()) {
       qCDebug(lcCse()) << "Could not decrypt metadata for key" << it.key();
       continue;
@@ -1560,7 +1559,7 @@ void FolderMetadata::setupExistingMetadata(const QByteArray& metadata)
 }
 
 // RSA/ECB/OAEPWithSHA-256AndMGF1Padding using private / public key.
-QByteArray FolderMetadata::encryptMetadataKey(const QByteArray& data) const
+QByteArray FolderMetadata::encryptData(const QByteArray& data) const
 {
     Bio publicKeyBio;
     QByteArray publicKeyPem = _account->e2e()->_publicKey.toPem();
@@ -1571,7 +1570,7 @@ QByteArray FolderMetadata::encryptMetadataKey(const QByteArray& data) const
     return EncryptionHelper::encryptStringAsymmetric(publicKey, data.toBase64());
 }
 
-QByteArray FolderMetadata::decryptMetadataKey(const QByteArray& encryptedMetadata) const
+QByteArray FolderMetadata::decryptData(const QByteArray &data) const
 {
     Bio privateKeyBio;
     QByteArray privateKeyPem = _account->e2e()->_privateKey;
@@ -1579,8 +1578,7 @@ QByteArray FolderMetadata::decryptMetadataKey(const QByteArray& encryptedMetadat
     auto key = ClientSideEncryption::PKey::readPrivateKey(privateKeyBio);
 
     // Also base64 decode the result
-    QByteArray decryptResult = EncryptionHelper::decryptStringAsymmetric(
-                    key, QByteArray::fromBase64(encryptedMetadata));
+    QByteArray decryptResult = EncryptionHelper::decryptStringAsymmetric(key, QByteArray::fromBase64(data));
 
     if (decryptResult.isEmpty())
     {
@@ -1617,7 +1615,7 @@ void FolderMetadata::setupEmptyMetadata() {
     _sharing.append({displayName, publicKey});
 }
 
-QByteArray FolderMetadata::encryptedMetadata() {
+QByteArray FolderMetadata::encryptedMetadata() const {
     qCDebug(lcCse) << "Generating metadata";
 
     if (_metadataKeys.isEmpty()) {
@@ -1631,7 +1629,7 @@ QByteArray FolderMetadata::encryptedMetadata() {
          * We have to already base64 encode the metadatakey here. This was a misunderstanding in the RFC
          * Now we should be compatible with Android and IOS. Maybe we can fix it later.
          */
-        const QByteArray encryptedKey = encryptMetadataKey(it.value().toBase64());
+        const QByteArray encryptedKey = encryptData(it.value().toBase64());
         metadataKeys.insert(QString::number(it.key()), QString(encryptedKey));
     }
 
@@ -1706,9 +1704,9 @@ QVector<EncryptedFile> FolderMetadata::files() const {
     return _files;
 }
 
-bool FolderMetadata::isFileDropDetected() const
+bool FolderMetadata::isFileDropPresent() const
 {
-    return _isFileDropDetected;
+    return _fileDrop.size() > 0;
 }
 
 bool FolderMetadata::moveFileDropToFiles()
@@ -1717,26 +1715,24 @@ bool FolderMetadata::moveFileDropToFiles()
         return false;
     }
 
-    for (auto it = _fileDrop.constBegin(), end = _fileDrop.constEnd(); it != end; it++) {
+    for (auto it = _fileDrop.constBegin(); it != _fileDrop.constEnd(); ++it) {
+        const auto fileObject = it.value().toObject();
+
+        const auto encryptedFile = fileObject["encrypted"].toString().toLocal8Bit();
+        const auto decryptedFile = decryptData(encryptedFile);
+        const auto decryptedFileDocument = QJsonDocument::fromJson(decryptedFile);
+        const auto decryptedFileObject = decryptedFileDocument.object();
+
         EncryptedFile file;
         file.encryptedFilename = it.key();
+        file.metadataKey = fileObject["metadataKey"].toInt();
+        file.authenticationTag = QByteArray::fromBase64(fileObject["authenticationTag"].toString().toLocal8Bit());
+        file.initializationVector = QByteArray::fromBase64(fileObject["initializationVector"].toString().toLocal8Bit());
 
-        auto fileObj = it.value().toObject();
-        file.metadataKey = fileObj["metadataKey"].toInt();
-        file.authenticationTag = QByteArray::fromBase64(fileObj["authenticationTag"].toString().toLocal8Bit());
-        file.initializationVector = QByteArray::fromBase64(fileObj["initializationVector"].toString().toLocal8Bit());
-
-        // Decrypt encrypted part
-        QByteArray key = _metadataKeys[file.metadataKey];
-        auto encryptedFile = fileObj["encrypted"].toString().toLocal8Bit();
-        auto decryptedFile = decryptMetadataKey(encryptedFile);
-        auto decryptedFileDoc = QJsonDocument::fromJson(decryptedFile);
-        auto decryptedFileObj = decryptedFileDoc.object();
-
-        file.originalFilename = decryptedFileObj["filename"].toString();
-        file.encryptionKey = QByteArray::fromBase64(decryptedFileObj["key"].toString().toLocal8Bit());
-        file.mimetype = decryptedFileObj["mimetype"].toString().toLocal8Bit();
-        file.fileVersion = decryptedFileObj["version"].toInt();
+        file.originalFilename = decryptedFileObject["filename"].toString();
+        file.encryptionKey = QByteArray::fromBase64(decryptedFileObject["key"].toString().toLocal8Bit());
+        file.mimetype = decryptedFileObject["mimetype"].toString().toLocal8Bit();
+        file.fileVersion = decryptedFileObject["version"].toInt();
 
         // In case we wrongly stored "inode/directory" we try to recover from it
         if (file.mimetype == QByteArrayLiteral("inode/directory")) {

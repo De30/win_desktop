@@ -15,13 +15,15 @@
 #include "updatefiledropmetadata.h"
 
 #include "clientsideencryptionjobs.h"
-#include "networkjobs.h"
 #include "clientsideencryption.h"
 #include "syncfileitem.h"
 
+#include <QLoggingCategory>
+#include <QNetworkReply>
+
 namespace OCC {
 
-Q_LOGGING_CATEGORY(lcUpdateFileDropMetadataJob, "nextcloud.sync.propagator.updatefiledropmetadatajon", QtInfoMsg)
+Q_LOGGING_CATEGORY(lcUpdateFileDropMetadataJob, "nextcloud.sync.propagator.updatefiledropmetadatajob", QtInfoMsg)
 
 }
 
@@ -35,22 +37,12 @@ UpdateFileDropMetadataJob::UpdateFileDropMetadataJob(OwncloudPropagator *propaga
 
 void UpdateFileDropMetadataJob::start()
 {
-    /* If the file is in a encrypted folder, which we know, we wouldn't be here otherwise,
-     * we need to do the long road:
-     * find the ID of the folder.
-     * lock the folder using it's id.
-     * download the metadata
-     * update the metadata
-     * upload the file
-     * upload the metadata
-     * unlock the folder.
-     */
     qCDebug(lcUpdateFileDropMetadataJob) << "Folder is encrypted, let's get the Id from it.";
-    auto job = new LsColJob(propagator()->account(), _path, this);
-    job->setProperties({"resourcetype", "http://owncloud.org/ns:fileid"});
-    connect(job, &LsColJob::directoryListingSubfolders, this, &UpdateFileDropMetadataJob::slotFolderEncryptedIdReceived);
-    connect(job, &LsColJob::finishedWithError, this, &UpdateFileDropMetadataJob::slotFolderEncryptedIdError);
-    job->start();
+    const auto fetchFolderEncryptedIdJob = new LsColJob(propagator()->account(), _path, this);
+    fetchFolderEncryptedIdJob->setProperties({"resourcetype", "http://owncloud.org/ns:fileid"});
+    connect(fetchFolderEncryptedIdJob, &LsColJob::directoryListingSubfolders, this, &UpdateFileDropMetadataJob::slotFolderEncryptedIdReceived);
+    connect(fetchFolderEncryptedIdJob, &LsColJob::finishedWithError, this, &UpdateFileDropMetadataJob::slotFolderEncryptedIdError);
+    fetchFolderEncryptedIdJob->start();
 }
 
 bool UpdateFileDropMetadataJob::scheduleSelfOrChild()
@@ -75,15 +67,14 @@ PropagatorJob::JobParallelism UpdateFileDropMetadataJob::parallelism()
 void UpdateFileDropMetadataJob::slotFolderEncryptedIdReceived(const QStringList &list)
 {
     qCDebug(lcUpdateFileDropMetadataJob) << "Received id of folder, trying to lock it so we can prepare the metadata";
-    auto job = qobject_cast<LsColJob *>(sender());
-    const auto &folderInfo = job->_folderInfos.value(list.first());
-    _folderLockFirstTry.start();
+    const auto fetchFolderEncryptedIdJob = qobject_cast<LsColJob *>(sender());
+    const auto &folderInfo = fetchFolderEncryptedIdJob->_folderInfos.value(list.first());
     slotTryLock(folderInfo.fileId);
 }
 
 void UpdateFileDropMetadataJob::slotTryLock(const QByteArray &fileId)
 {
-    auto *lockJob = new LockEncryptFolderApiJob(propagator()->account(), fileId, this);
+    const auto lockJob = new LockEncryptFolderApiJob(propagator()->account(), fileId, this);
     connect(lockJob, &LockEncryptFolderApiJob::success, this, &UpdateFileDropMetadataJob::slotFolderLockedSuccessfully);
     connect(lockJob, &LockEncryptFolderApiJob::error, this, &UpdateFileDropMetadataJob::slotFolderLockedError);
     lockJob->start();
@@ -91,18 +82,16 @@ void UpdateFileDropMetadataJob::slotTryLock(const QByteArray &fileId)
 
 void UpdateFileDropMetadataJob::slotFolderLockedSuccessfully(const QByteArray &fileId, const QByteArray &token)
 {
-    qCDebug(lcUpdateFileDropMetadataJob) << "Folder" << fileId << "Locked Successfully for Upload, Fetching Metadata";
-    // Should I use a mutex here?
-    _currentLockingInProgress = true;
+    qCDebug(lcUpdateFileDropMetadataJob) << "Folder" << fileId << "Locked Successfully for Upload, Fetching Metadata"; 
     _folderToken = token;
     _folderId = fileId;
     _isFolderLocked = true;
 
-    auto job = new GetMetadataApiJob(propagator()->account(), _folderId);
-    connect(job, &GetMetadataApiJob::jsonReceived, this, &UpdateFileDropMetadataJob::slotFolderEncryptedMetadataReceived);
-    connect(job, &GetMetadataApiJob::error, this, &UpdateFileDropMetadataJob::slotFolderEncryptedMetadataError);
+    const auto fetchMetadataJob = new GetMetadataApiJob(propagator()->account(), _folderId);
+    connect(fetchMetadataJob, &GetMetadataApiJob::jsonReceived, this, &UpdateFileDropMetadataJob::slotFolderEncryptedMetadataReceived);
+    connect(fetchMetadataJob, &GetMetadataApiJob::error, this, &UpdateFileDropMetadataJob::slotFolderEncryptedMetadataError);
 
-    job->start();
+    fetchMetadataJob->start();
 }
 
 void UpdateFileDropMetadataJob::slotFolderEncryptedMetadataError(const QByteArray &fileId, int httpReturnCode)
@@ -110,10 +99,9 @@ void UpdateFileDropMetadataJob::slotFolderEncryptedMetadataError(const QByteArra
     Q_UNUSED(fileId);
     Q_UNUSED(httpReturnCode);
     qCDebug(lcUpdateFileDropMetadataJob()) << "Error Getting the encrypted metadata. Pretend we got empty metadata.";
-    FolderMetadata emptyMetadata(propagator()->account());
-    emptyMetadata.encryptedMetadata();
-    auto json = QJsonDocument::fromJson(emptyMetadata.encryptedMetadata());
-    slotFolderEncryptedMetadataReceived(json, httpReturnCode);
+    const FolderMetadata emptyMetadata(propagator()->account());
+    const auto encryptedMetadataJson = QJsonDocument::fromJson(emptyMetadata.encryptedMetadata());
+    slotFolderEncryptedMetadataReceived(encryptedMetadataJson, httpReturnCode);
 }
 
 void UpdateFileDropMetadataJob::slotFolderEncryptedMetadataReceived(const QJsonDocument &json, int statusCode)
@@ -127,11 +115,10 @@ void UpdateFileDropMetadataJob::slotFolderEncryptedMetadataReceived(const QJsonD
         return;
     }
 
-    auto job = new UpdateMetadataApiJob(propagator()->account(), _folderId, _metadata->encryptedMetadata(), _folderToken);
-
-    connect(job, &UpdateMetadataApiJob::success, this, &UpdateFileDropMetadataJob::slotUpdateMetadataSuccess);
-    connect(job, &UpdateMetadataApiJob::error, this, &UpdateFileDropMetadataJob::slotUpdateMetadataError);
-    job->start();
+    const auto updateMetadataJob = new UpdateMetadataApiJob(propagator()->account(), _folderId, _metadata->encryptedMetadata(), _folderToken);
+    connect(updateMetadataJob, &UpdateMetadataApiJob::success, this, &UpdateFileDropMetadataJob::slotUpdateMetadataSuccess);
+    connect(updateMetadataJob, &UpdateMetadataApiJob::error, this, &UpdateFileDropMetadataJob::slotUpdateMetadataError);
+    updateMetadataJob->start();
 }
 
 void UpdateFileDropMetadataJob::slotUpdateMetadataSuccess(const QByteArray &fileId)
@@ -180,7 +167,7 @@ void UpdateFileDropMetadataJob::unlockFolder()
     _isUnlockRunning = true;
 
     qDebug() << "Calling Unlock";
-    auto *unlockJob = new UnlockEncryptFolderApiJob(propagator()->account(), _folderId, _folderToken, this);
+    const auto unlockJob = new UnlockEncryptFolderApiJob(propagator()->account(), _folderId, _folderToken, this);
 
     connect(unlockJob, &UnlockEncryptFolderApiJob::success, [this](const QByteArray &folderId) {
         qDebug() << "Successfully Unlocked";

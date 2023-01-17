@@ -871,35 +871,35 @@ public:
 
 void SocketApi::command_COPY_SECUREFILEDROP_LINK(const QString &localFile, SocketListener *)
 {
-    auto fileData = FileData::get(localFile);
-    if (!fileData.folder)
+    const auto fileData = FileData::get(localFile);
+    if (!fileData.folder) {
         return;
+    }
 
-    AccountPtr account = fileData.folder->accountState()->account();
-    auto job = new GetOrCreatePublicLinkShare(account, fileData.serverRelativePath, this);
-    connect(job, &GetOrCreatePublicLinkShare::done, this,
-        [](const QString &url) { copyUrlToClipboard(url); });
-    connect(job, &GetOrCreatePublicLinkShare::error, this,
-        [=]() { emit shareCommandReceived(fileData.localPath); });
-    job->setIsE2eEncryptedFolder(true);
-    job->run();
+    const auto account = fileData.folder->accountState()->account();
+    const auto getOrCreatePublicLinkShareJob = new GetOrCreatePublicLinkShare(account, fileData.serverRelativePath, this);
+    connect(getOrCreatePublicLinkShareJob, &GetOrCreatePublicLinkShare::done, this, [](const QString &url) { copyUrlToClipboard(url); });
+    connect(getOrCreatePublicLinkShareJob, &GetOrCreatePublicLinkShare::error, this, [=]() { emit shareCommandReceived(fileData.localPath); });
+    getOrCreatePublicLinkShareJob->setIsE2eEncryptedFolder(true);
+    getOrCreatePublicLinkShareJob->run();
 }
 
 void SocketApi::command_COPY_PUBLIC_LINK(const QString &localFile, SocketListener *)
 {
-    auto fileData = FileData::get(localFile);
-    if (!fileData.folder)
+    const auto fileData = FileData::get(localFile);
+    if (!fileData.folder) {
         return;
+    }
 
-    AccountPtr account = fileData.folder->accountState()->account();
-    auto job = new GetOrCreatePublicLinkShare(account, fileData.serverRelativePath, this);
-    connect(job, &GetOrCreatePublicLinkShare::done, this, [](const QString &url) {
+    const auto account = fileData.folder->accountState()->account();
+    const auto getOrCreatePublicLinkShareJob = new GetOrCreatePublicLinkShare(account, fileData.serverRelativePath, this);
+    connect(getOrCreatePublicLinkShareJob, &GetOrCreatePublicLinkShare::done, this, [](const QString &url) {
         copyUrlToClipboard(url);
     });
-    connect(job, &GetOrCreatePublicLinkShare::error, this, [=]() {
+    connect(getOrCreatePublicLinkShareJob, &GetOrCreatePublicLinkShare::error, this, [=]() {
         emit shareCommandReceived(fileData.localPath);
     });
-    job->run();
+    getOrCreatePublicLinkShareJob->run();
 }
 
 // Windows Shell / Explorer pinning fallbacks, see issue: https://github.com/nextcloud/desktop/issues/1599
@@ -1151,11 +1151,11 @@ void SocketApi::command_GET_STRINGS(const QString &argument, SocketListener *lis
     listener->sendMessage(QString("GET_STRINGS:END"));
 }
 
-void SocketApi::sendSharingContextMenuOptions(const FileData &fileData, SocketListener *listener, bool isE2eeItem, bool isForRootE2eFolder)
+void SocketApi::sendSharingContextMenuOptions(const FileData &fileData, SocketListener *listener, bool isForE2eeItem, bool isForRootE2eeFolder)
 {
-    auto record = fileData.journalRecord();
-    bool isOnTheServer = record.isValid();
-    auto flagString = isOnTheServer && (!isE2eeItem || isForRootE2eFolder) ? QLatin1String("::") : QLatin1String(":d:");
+    const auto record = fileData.journalRecord();
+    const auto isOnTheServer = record.isValid();
+    const auto flagString = isOnTheServer && (!isForE2eeItem || isForRootE2eeFolder) ? QLatin1String("::") : QLatin1String(":d:");
 
     auto capabilities = fileData.folder->accountState()->account()->capabilities();
     auto theme = Theme::instance();
@@ -1183,13 +1183,13 @@ void SocketApi::sendSharingContextMenuOptions(const FileData &fileData, SocketLi
             && !capabilities.sharePublicLinkEnforcePassword();
 
         if (canCreateDefaultPublicLink) {
-            if (isForRootE2eFolder) {
+            if (isForRootE2eeFolder) {
                 listener->sendMessage(QLatin1String("MENU_ITEM:COPY_SECUREFILEDROP_LINK") + QLatin1String("::") + tr("Copy secure filedrop link"));
             } else {
                 listener->sendMessage(QLatin1String("MENU_ITEM:COPY_PUBLIC_LINK") + flagString + tr("Copy public link"));
             }
         } else if (publicLinksEnabled) {
-            if (isForRootE2eFolder) {
+            if (isForRootE2eeFolder) {
                 listener->sendMessage(QLatin1String("MENU_ITEM:MANAGE_PUBLIC_LINKS") + QLatin1String("::") + tr("Copy secure filedrop link"));
             } else {
                 listener->sendMessage(QLatin1String("MENU_ITEM:MANAGE_PUBLIC_LINKS") + flagString + tr("Copy public link"));
@@ -1197,7 +1197,7 @@ void SocketApi::sendSharingContextMenuOptions(const FileData &fileData, SocketLi
         }
     }
 
-    if (!isE2eeItem) {
+    if (!isForE2eeItem) {
         listener->sendMessage(QLatin1String("MENU_ITEM:COPY_PRIVATE_LINK") + flagString + tr("Copy internal link"));
     }
 

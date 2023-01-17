@@ -190,7 +190,7 @@ private:
     bool _hasInitialShareFetchCompleted = false;
     SharePtr _placeholderLinkShare;
     SharePtr _internalLinkShare;
-    SharePtr _secureFileDropLinkShare;
+    SharePtr _secureFileDropPlaceholderLinkShare;
 
     // DO NOT USE QSHAREDPOINTERS HERE.
     // QSharedPointers MUST NOT be used with pointers already assigned to other shared pointers.
@@ -207,8 +207,8 @@ private:
     QString _sharePath;
     SharePermissions _maxSharingPermissions;
     QByteArray _numericFileId;
-    bool _isEncryptedFile = false;
-    bool _isEncryptedRoootFolder = false;
+    bool _isEncryptedItem = false;
+    bool _isEncryptedRootFolder = false;
     SyncJournalFileLockInfo _filelockState;
     QString _privateLinkUrl;
 

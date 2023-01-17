@@ -325,7 +325,7 @@ Page {
                 indicator.width: moreMenu.indicatorItemWidth
                 indicator.height: moreMenu.indicatorItemWidth
 
-                checkable: !root.isSecureFileDropLink
+                checkable: true
                 checked: root.editingAllowed
                 text: qsTr("Allow editing")
                 enabled: !root.waitingForEditingAllowedChange

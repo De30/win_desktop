@@ -626,7 +626,7 @@ void DiscoverySingleDirectoryJob::metadataReceived(const QJsonDocument &json, in
     Q_ASSERT(_subPath.startsWith('/'));
 
     const auto metadata = FolderMetadata(_account, json.toJson(QJsonDocument::Compact), statusCode);
-    _isFileDropDetected = metadata.isFileDropDetected();
+    _isFileDropDetected = metadata.isFileDropPresent();
     const auto encryptedFiles = metadata.files();
 
     const auto findEncryptedFile = [=](const QString &name) {
