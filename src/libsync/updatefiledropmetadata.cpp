@@ -160,17 +160,17 @@ void UpdateFileDropMetadataJob::unlockFolder()
     }
 
     if (_isUnlockRunning) {
-        qWarning() << "Double-call to unlockFolder.";
+        qCWarning(lcUpdateFileDropMetadataJob) << "Double-call to unlockFolder.";
         return;
     }
 
     _isUnlockRunning = true;
 
-    qDebug() << "Calling Unlock";
+    qCDebug(lcUpdateFileDropMetadataJob) << "Calling Unlock";
     const auto unlockJob = new UnlockEncryptFolderApiJob(propagator()->account(), _folderId, _folderToken, this);
 
     connect(unlockJob, &UnlockEncryptFolderApiJob::success, [this](const QByteArray &folderId) {
-        qDebug() << "Successfully Unlocked";
+        qCDebug(lcUpdateFileDropMetadataJob) << "Successfully Unlocked";
         _folderToken = "";
         _folderId = "";
         _isFolderLocked = false;
@@ -180,7 +180,7 @@ void UpdateFileDropMetadataJob::unlockFolder()
         emit finished(SyncFileItem::Status::Success);
     });
     connect(unlockJob, &UnlockEncryptFolderApiJob::error, [this](const QByteArray &folderId, int httpStatus) {
-        qDebug() << "Unlock Error";
+        qCDebug(lcUpdateFileDropMetadataJob) << "Unlock Error";
 
         emit folderUnlocked(folderId, httpStatus);
         _isUnlockRunning = false;

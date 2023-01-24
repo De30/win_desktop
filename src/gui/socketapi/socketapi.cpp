@@ -736,12 +736,13 @@ class GetOrCreatePublicLinkShare : public QObject
 {
     Q_OBJECT
 public:
-    GetOrCreatePublicLinkShare(const AccountPtr &account, const QString &localFile,
+    GetOrCreatePublicLinkShare(const AccountPtr &account, const QString &localFile, const bool isE2eEncryptedFolder,
         QObject *parent)
         : QObject(parent)
         , _account(account)
         , _shareManager(account)
         , _localFile(localFile)
+        , _isE2eEncryptedFolder(isE2eEncryptedFolder)
     {
         connect(&_shareManager, &ShareManager::sharesFetched,
             this, &GetOrCreatePublicLinkShare::sharesFetched);
@@ -757,11 +758,6 @@ public:
     {
         qCDebug(lcPublicLink) << "Fetching shares";
         _shareManager.fetchShares(_localFile);
-    }
-
-    void setIsE2eEncryptedFolder(bool isE2eEncryptedFolder)
-    {
-        _isE2eEncryptedFolder = isE2eEncryptedFolder;
     }
 
 private slots:
@@ -877,10 +873,9 @@ void SocketApi::command_COPY_SECUREFILEDROP_LINK(const QString &localFile, Socke
     }
 
     const auto account = fileData.folder->accountState()->account();
-    const auto getOrCreatePublicLinkShareJob = new GetOrCreatePublicLinkShare(account, fileData.serverRelativePath, this);
+    const auto getOrCreatePublicLinkShareJob = new GetOrCreatePublicLinkShare(account, fileData.serverRelativePath, true, this);
     connect(getOrCreatePublicLinkShareJob, &GetOrCreatePublicLinkShare::done, this, [](const QString &url) { copyUrlToClipboard(url); });
     connect(getOrCreatePublicLinkShareJob, &GetOrCreatePublicLinkShare::error, this, [=]() { emit shareCommandReceived(fileData.localPath); });
-    getOrCreatePublicLinkShareJob->setIsE2eEncryptedFolder(true);
     getOrCreatePublicLinkShareJob->run();
 }
 
@@ -892,7 +887,7 @@ void SocketApi::command_COPY_PUBLIC_LINK(const QString &localFile, SocketListene
     }
 
     const auto account = fileData.folder->accountState()->account();
-    const auto getOrCreatePublicLinkShareJob = new GetOrCreatePublicLinkShare(account, fileData.serverRelativePath, this);
+    const auto getOrCreatePublicLinkShareJob = new GetOrCreatePublicLinkShare(account, fileData.serverRelativePath, false, this);
     connect(getOrCreatePublicLinkShareJob, &GetOrCreatePublicLinkShare::done, this, [](const QString &url) {
         copyUrlToClipboard(url);
     });
