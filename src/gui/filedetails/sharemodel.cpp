@@ -154,7 +154,7 @@ QVariant ShareModel::data(const QModelIndex &index, const int role) const
     case EnforcedMaximumExpireDateRole:
         return enforcedMaxExpireDateForShare(share);
     case IsSecureFileDropLinkRole:
-        return _isEncryptedRootFolder && share->getPermissions().testFlag(OCC::SharePermission::SharePermissionCreate);
+        return _isSecureFileDropSupportedFolder && share->getPermissions().testFlag(OCC::SharePermission::SharePermissionCreate);
     case PasswordProtectEnabledRole:
         return share->isPasswordSet();
     case PasswordRole:
@@ -258,7 +258,7 @@ void ShareModel::updateData()
     _numericFileId = fileRecord.numericFileId();
 
     _isEncryptedItem = fileRecord._isE2eEncrypted;
-    _isEncryptedRootFolder = fileRecord._isE2eEncrypted && fileRecord.e2eMangledName().isEmpty();
+    _isSecureFileDropSupportedFolder = fileRecord._isE2eEncrypted && fileRecord.e2eMangledName().isEmpty() && _accountState->account()->secureFileDropSupported();
 
     // Will get added when shares are fetched if no link shares are fetched
     _placeholderLinkShare.reset(new Share(_accountState->account(),
@@ -368,7 +368,7 @@ void ShareModel::handlePlaceholderLinkShare()
 
 void ShareModel::handleSecureFileDropLinkShare()
 {
-    if (!_isEncryptedRootFolder) {
+    if (!_isSecureFileDropSupportedFolder) {
         return;
     }
     // We want to add the placeholder if there are no link shares and
@@ -581,7 +581,7 @@ QString ShareModel::displayStringForShare(const SharePtr &share) const
 {
     if (const auto linkShare = share.objectCast<LinkShare>()) {
 
-        const auto isSecureFileDropShare = _isEncryptedRootFolder && linkShare->getPermissions().testFlag(OCC::SharePermission::SharePermissionCreate);
+        const auto isSecureFileDropShare = _isSecureFileDropSupportedFolder && linkShare->getPermissions().testFlag(OCC::SharePermission::SharePermissionCreate);
 
         const auto displayString = isSecureFileDropShare ? tr("Secure filedrop link") : tr("Share link");
 
@@ -943,7 +943,7 @@ void ShareModel::setShareNoteFromQml(const QVariant &share, const QString &note)
 
 void ShareModel::createNewLinkShare() const
 {
-    if (_isEncryptedItem && !_isEncryptedRootFolder) {
+    if (_isEncryptedItem && !_isSecureFileDropSupportedFolder) {
         qCWarning(lcShareModel) << "Attempt to create a link share for non-root encrypted folder or a file.";
         return;
     }
@@ -951,7 +951,7 @@ void ShareModel::createNewLinkShare() const
     if (_manager) {
         const auto askOptionalPassword = _accountState->account()->capabilities().sharePublicLinkAskOptionalPassword();
         const auto password = askOptionalPassword ? createRandomPassword() : QString();
-        if (_isEncryptedRootFolder) {
+        if (_isSecureFileDropSupportedFolder) {
             _manager->createSecureFileDropShare(_sharePath, {}, password);
             return;
         }

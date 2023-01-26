@@ -208,7 +208,7 @@ private:
     SharePermissions _maxSharingPermissions;
     QByteArray _numericFileId;
     bool _isEncryptedItem = false;
-    bool _isEncryptedRootFolder = false;
+    bool _isSecureFileDropSupportedFolder = false;
     SyncJournalFileLockInfo _filelockState;
     QString _privateLinkUrl;
 

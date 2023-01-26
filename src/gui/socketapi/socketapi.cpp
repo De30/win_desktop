@@ -736,13 +736,13 @@ class GetOrCreatePublicLinkShare : public QObject
 {
     Q_OBJECT
 public:
-    GetOrCreatePublicLinkShare(const AccountPtr &account, const QString &localFile, const bool isE2eEncryptedFolder,
+    GetOrCreatePublicLinkShare(const AccountPtr &account, const QString &localFile, const bool isSecureFileDropOnlyFolder,
         QObject *parent)
         : QObject(parent)
         , _account(account)
         , _shareManager(account)
         , _localFile(localFile)
-        , _isE2eEncryptedFolder(isE2eEncryptedFolder)
+        , _isSecureFileDropOnlyFolder(isSecureFileDropOnlyFolder)
     {
         connect(&_shareManager, &ShareManager::sharesFetched,
             this, &GetOrCreatePublicLinkShare::sharesFetched);
@@ -779,7 +779,7 @@ private slots:
 
         // otherwise create a new one
         qCDebug(lcPublicLink) << "Creating new share";
-        if (_isE2eEncryptedFolder) {
+        if (_isSecureFileDropOnlyFolder) {
             _shareManager.createSecureFileDropShare(_localFile, shareName, QString());
         } else {
             _shareManager.createLinkShare(_localFile, shareName, QString());
@@ -844,7 +844,7 @@ private:
     AccountPtr _account;
     ShareManager _shareManager;
     QString _localFile;
-    bool _isE2eEncryptedFolder = false;
+    bool _isSecureFileDropOnlyFolder = false;
 };
 
 #else
@@ -1150,7 +1150,8 @@ void SocketApi::sendSharingContextMenuOptions(const FileData &fileData, SocketLi
 {
     const auto record = fileData.journalRecord();
     const auto isOnTheServer = record.isValid();
-    const auto flagString = isOnTheServer && (!isForE2eeItem || isForRootE2eeFolder) ? QLatin1String("::") : QLatin1String(":d:");
+    const auto isSecureFileDropSupported = isForRootE2eeFolder && fileData.folder->accountState()->account()->secureFileDropSupported();
+    const auto flagString = isOnTheServer && (!isForE2eeItem || isSecureFileDropSupported) ? QLatin1String("::") : QLatin1String(":d:");
 
     auto capabilities = fileData.folder->accountState()->account()->capabilities();
     auto theme = Theme::instance();
@@ -1178,13 +1179,13 @@ void SocketApi::sendSharingContextMenuOptions(const FileData &fileData, SocketLi
             && !capabilities.sharePublicLinkEnforcePassword();
 
         if (canCreateDefaultPublicLink) {
-            if (isForRootE2eeFolder) {
+            if (isSecureFileDropSupported) {
                 listener->sendMessage(QLatin1String("MENU_ITEM:COPY_SECUREFILEDROP_LINK") + QLatin1String("::") + tr("Copy secure filedrop link"));
             } else {
                 listener->sendMessage(QLatin1String("MENU_ITEM:COPY_PUBLIC_LINK") + flagString + tr("Copy public link"));
             }
         } else if (publicLinksEnabled) {
-            if (isForRootE2eeFolder) {
+            if (isSecureFileDropSupported) {
                 listener->sendMessage(QLatin1String("MENU_ITEM:MANAGE_PUBLIC_LINKS") + QLatin1String("::") + tr("Copy secure filedrop link"));
             } else {
                 listener->sendMessage(QLatin1String("MENU_ITEM:MANAGE_PUBLIC_LINKS") + flagString + tr("Copy public link"));
