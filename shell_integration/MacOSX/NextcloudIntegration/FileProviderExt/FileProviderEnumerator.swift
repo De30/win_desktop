@@ -41,6 +41,7 @@ class FileProviderEnumerator: NSObject, NSFileProviderEnumerator {
 
         }
 
+        NSLog("Set up enumerator for user: %@ with serverUrl: %@", ncAccount.username, serverUrl)
         super.init()
     }
 
@@ -51,6 +52,7 @@ class FileProviderEnumerator: NSObject, NSFileProviderEnumerator {
     // MARK: - Protocol methods
 
     func enumerateItems(for observer: NSFileProviderEnumerationObserver, startingAt page: NSFileProviderPage) {
+        NSLog("Received enumerate items request for enumerator with user: %@ with serverUrl: %@", ncAccount.username, serverUrl)
         /* TODO:
          - inspect the page to determine whether this is an initial or a follow-up request
          
@@ -65,6 +67,7 @@ class FileProviderEnumerator: NSObject, NSFileProviderEnumerator {
          */
 
         if enumeratedItemIdentifier == .workingSet {
+            NSLog("Enumerating working set for user: %@ with serverUrl: %@", ncAccount.username, serverUrl)
             // TODO
             observer.finishEnumerating(upTo: nil)
             return
@@ -73,16 +76,21 @@ class FileProviderEnumerator: NSObject, NSFileProviderEnumerator {
         if page == NSFileProviderPage.initialPageSortedByDate as NSFileProviderPage ||
             page == NSFileProviderPage.initialPageSortedByName as NSFileProviderPage {
 
+            NSLog("Enumerating initial page for user: %@ with serverUrl: %@", ncAccount.username, serverUrl)
             FileProviderEnumerator.readServerUrl(serverUrl, ncAccount: ncAccount) { metadatas in
                 FileProviderEnumerator.completeObserver(observer, numPage: 1, itemMetadatas: metadatas)
             }
-        } else {
-            let numPage = Int(String(data: page.rawValue, encoding: .utf8)!)!
-            FileProviderEnumerator.completeObserver(observer, numPage: numPage, itemMetadatas: nil)
+
+            return;
         }
+
+        let numPage = Int(String(data: page.rawValue, encoding: .utf8)!)!
+        NSLog("Enumerating page %d for user: %@ with serverUrl: %@", numPage, ncAccount.username, serverUrl)
+        FileProviderEnumerator.completeObserver(observer, numPage: numPage, itemMetadatas: nil)
     }
     
     func enumerateChanges(for observer: NSFileProviderChangeObserver, from anchor: NSFileProviderSyncAnchor) {
+        NSLog("Received enumerate changes request for enumerator with user: %@ with serverUrl: %@", ncAccount.username, serverUrl)
         /* TODO:
          - query the server for updates since the passed-in sync anchor
          
@@ -130,6 +138,8 @@ class FileProviderEnumerator: NSObject, NSFileProviderEnumerator {
 
     private static func finishReadServerUrl(_ serverUrlPath: String, ncKitAccount: String, completionHandler: @escaping (_ metadatas: [NextcloudItemMetadataTable]?) -> Void) {
         let metadatas = NextcloudFilesDatabaseManager.shared.itemMetadatas(account: ncKitAccount, serverUrl: serverUrlPath)
+
+        NSLog("Finished reading serverUrl: %@ for user: %@. Processed following metadatas: %@", serverUrlPath, ncKitAccount, metadatas)
         completionHandler(metadatas)
     }
 
@@ -141,6 +151,8 @@ class FileProviderEnumerator: NSObject, NSFileProviderEnumerator {
         if let directoryMetadata = dbManager.directoryMetadata(account: ncKitAccount, serverUrl: serverUrl) {
             directoryEtag = directoryMetadata.etag
         }
+
+        NSLog("Starting to read serverUrl: %@ for user: %@", serverUrl, ncKitAccount)
 
         NextcloudKit.shared.readFileOrFolder(serverUrlFileName: serverUrl, depth: "0", showHiddenFiles: true) { account, files, _, error in
             guard directoryEtag != files.first?.etag else {
